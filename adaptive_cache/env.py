@@ -34,7 +34,12 @@ class AdaptiveCacheEnv:
         return self.state()
 
     def state(self) -> Observation:
-        current_item = self.workload[self.step_count]
+        # Safe check for the terminal state to prevent IndexError
+        if self.step_count >= len(self.workload):
+            current_item = -1  # Simulation is over, no more incoming requests
+        else:
+            current_item = self.workload[self.step_count]
+            
         idle_times = [(self.sim.current_time - t) if t > 0 else 0 for t in self.sim.last_access_time]
         return Observation(
             incoming_request=current_item,
@@ -43,33 +48,30 @@ class AdaptiveCacheEnv:
         )
 
     def step(self, action: Action) -> Tuple[Observation, float, bool, Dict[str, Any]]:
+        # 1. Apply Action (Evict and Insert)
         current_item = self.workload[self.step_count]
-        
         self.sim.evict_and_insert(action.evict_index, current_item)
+        
+        # 2. Advance time strictly by 1 step
         self.step_count += 1
         
-        done = self.step_count >= len(self.workload) - 1
+        # 3. Check Episode Boundary
+        done = self.step_count >= len(self.workload)
         reward = 0.0
         
         if done:
             final_score = self.hits / max(1, len(self.workload))
             return self.state(), reward, True, {"score": final_score}
 
+        # 4. Evaluate the *next* state strictly without fast-forwarding
         next_item = self.workload[self.step_count]
         is_hit = self.sim.request_item(next_item)
         
         if is_hit:
             reward = 1.0 
             self.hits += 1
-            while is_hit and not done:
-                self.step_count += 1
-                done = self.step_count >= len(self.workload) - 1
-                if not done:
-                    next_item = self.workload[self.step_count]
-                    is_hit = self.sim.request_item(next_item)
-                    if is_hit:
-                        self.hits += 1
-                        reward += 1.0 
+            # If it's a hit, the agent will see this in the next observation
+            # and can essentially choose a "safe" eviction slot that doesn't hurt.
         else:
             reward = -1.0 
             

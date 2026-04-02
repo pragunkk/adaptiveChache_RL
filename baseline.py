@@ -32,7 +32,7 @@ def run_baseline(task_level: str):
         try:
             # 2. Call Groq's high-speed open source model
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile", # Groq's powerful model
+                model="llama-3.1-8b-instant", # Groq's powerful model
                 response_format={ "type": "json_object" },
                 messages=[
                     {"role": "system", "content": system_prompt},
