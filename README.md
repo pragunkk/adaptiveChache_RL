@@ -1,3 +1,16 @@
+---
+title: Adaptive Cache Manager
+emoji: 🧠
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+tags:
+  - openenv
+  - reinforcement-learning
+  - agents
+---
+
 # 🧠 Adaptive Cache Manager (OpenEnv)
 
 An OpenEnv-compliant reinforcement learning and agentic AI environment that simulates a high-performance operating system memory manager. 
@@ -13,7 +26,7 @@ However, standard algorithms fail when traffic patterns change abruptly or fall 
 
 ## 🛠 Environment Design: Spaces & Rewards
 
-The environment strictly implements the OpenEnv API via typed Pydantic models.
+The environment strictly implements the OpenEnv API via typed Pydantic models and exposes standard `POST /reset` and `POST /step` web endpoints via FastAPI.
 
 ### Observation Space
 The agent receives a lightweight, numerical snapshot of the memory system at the exact moment a cache miss occurs.
@@ -27,7 +40,7 @@ The agent must decide which slot to free up.
 
 ### Reward Function
 The environment provides a dense, step-by-step reward signal directly correlated to system performance:
-* **`+1.0`** for every Cache Hit (including consecutive hits safely fast-forwarded without agent intervention).
+* **`+1.0`** for every Cache Hit.
 * **`-1.0`** for a Cache Miss (forcing the agent to step in and evict).
 
 ---
@@ -52,52 +65,59 @@ The environment features three programmatic workloads (tasks) designed to challe
 
 ## 🚀 Setup & Execution
 
-### 1. Local Virtual Environment Setup
-Ensure you are using Python 3.10 or higher (Python 3.13 is fully supported).
+### 1. Local Setup (Modern `uv` package manager)
+This project uses modern Python packaging via `pyproject.toml` and `uv.lock`.
 
 ```bash
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+# Install the ultra-fast uv package manager
+pip install uv
 
-# Install dependencies
-pip install -r requirements.txt
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
+uv sync
 ```
+### 2. Running the Inference Agent
+The inference.py script evaluates the environment using a zero-shot LLM baseline via the official OpenAI Python SDK.
 
-### 2. Running the Baseline Agent
-The baseline script uses Groq's Llama-3 model to evaluate the environment via the official OpenAI Python SDK, satisfying the OpenEnv API client requirement while remaining 100% free and lightning-fast.
+(Note: To ensure tests can be run repeatedly without cost during development, the script reads from the strict OPENAI_API_KEY variable as per OpenEnv specs, but the base URL can be pointed to Groq's free models).
 
 ```bash
-# Export your free Groq API key (get one at console.groq.com)
+# Export your API key
 export GROQ_API_KEY="your-api-key-here"
 
 # Run the baseline evaluation across all 3 tasks
-python baseline.py
+python inference.py
 ```
 
 ### 3. Docker & Hugging Face Deployment
-This environment is fully containerized and designed for deployment as a Hugging Face Space.
+This environment is fully containerized, web-server enabled (FastAPI/Uvicorn), and designed for multi-mode deployment as a Hugging Face Space.
 
 ```bash
-# Build the image
+# Build the image locally
 docker build -t adaptive-cache-env .
 
-# Run the container (pass your API key)
-docker run -e GROQ_API_KEY="your-api-key-here" adaptive-cache-env
+# Run the container locally (boots the FastAPI server on port 7860)
+docker run -p 7860:7860 adaptive-cache-env
 ```
 
 ## 📂 Project Structure
 
 ```bash
 adaptive-cache-env/
-├── Dockerfile             # Container configuration for HF Spaces
-├── requirements.txt       # Project dependencies (NumPy 2.x, Pydantic, OpenAI SDK)
+├── Dockerfile             # Container configuration pointing to server.app
+├── pyproject.toml         # Modern build system & OpenEnv core dependencies
+├── uv.lock                # Strict dependency lockfile
 ├── openenv.yaml           # OpenEnv task and metadata specifications
-├── baseline.py            # Baseline LLM inference script
+├── inference.py           # Baseline LLM inference script
+├── test_env.py            # Deterministic grader bounds validation
 ├── README.md              # Project documentation
+├── server/
+│   └── app.py             # FastAPI web server and OpenEnv POST endpoints
 └── adaptive_cache/
     ├── __init__.py
     ├── simulator.py       # Core OS-level array and memory simulation
     ├── workloads.py       # Deterministic task generators (Zipfian, Sequential, etc.)
     └── env.py             # OpenEnv wrapper and Pydantic models
+
 ```
