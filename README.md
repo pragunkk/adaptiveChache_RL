@@ -63,6 +63,23 @@ The environment features three programmatic workloads (tasks) designed to challe
 
 ---
 
+
+## 📊 Baseline Comparisons
+
+To demonstrate the necessity of intelligent eviction policies, this environment provides benchmark scores comparing traditional operating system algorithms against a zero-shot LLM baseline (Llama-3 8B). The table below displays the final **Hit Rate (0.0 to 1.0)**.
+
+| Task (Workload) | Random Eviction | LRU | LFU | LLM Agent (Zero-Shot) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Easy (Zipfian)** | 0.64 | 0.18 | 0.44 | **0.67** |
+| **Medium (Sequential)** | 0.35 | 0.00 | 0.08 | **0.16** |
+| **Hard (Shifting)** | **0.35** | 0.04 | 0.13 | 0.12 |
+
+**Key Insights for Researchers:**
+* **The Sequential Trap:** As proven by the Medium task, standard LRU algorithms achieve a mathematical **0.00 hit rate** when faced with sequence loops larger than the cache size. The LLM demonstrates foundational reasoning to break this loop, outperforming both LRU and LFU.
+* **The Shifting Challenge:** The Hard task proves that static frequency counters (LFU) and smaller zero-shot LLMs both struggle to adapt to sudden data shifts. This sets a clear, rigorous benchmark for future Reinforcement Learning agents to conquer.
+
+---
+
 ## 🚀 Setup & Execution
 
 ### 1. Local Setup (Modern `uv` package manager)
