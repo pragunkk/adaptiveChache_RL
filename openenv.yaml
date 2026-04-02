@@ -1,0 +1,17 @@
+name: "adaptive-cache-manager"
+version: "1.0.0"
+description: "An environment where an agent acts as a dynamic cache eviction policy."
+entrypoint: "adaptive_cache.env:AdaptiveCacheEnv"
+tasks:
+  - id: "cache-zipfian-easy"
+    description: "Manage a cache against a standard power-law distribution workload."
+    parameters:
+      task_level: "easy"
+  - id: "cache-sequential-medium"
+    description: "Manage a cache against a looping sequential scan that defeats LRU."
+    parameters:
+      task_level: "medium"
+  - id: "cache-shifting-hard"
+    description: "Manage a cache against abruptly changing working sets."
+    parameters:
+      task_level: "hard"
