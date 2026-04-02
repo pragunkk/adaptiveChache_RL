@@ -9,4 +9,4 @@ COPY . .
 EXPOSE 7860
 
 # Run the FastAPI server
-CMD ["server"]
+CMD ["python", "-m", "server.app"]
