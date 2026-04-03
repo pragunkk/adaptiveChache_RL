@@ -94,6 +94,14 @@ uv venv
 source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 uv sync
 ```
+
+```bash
+#create .env file in root directory
+LLM_API_KEY="model api key"
+LLM_BASE_URL="model api url"
+LLM_MODEL_NAME="model name"
+```
+
 ### 2. Running the Inference Agent
 The inference.py script evaluates the environment using a zero-shot LLM baseline via the official OpenAI Python SDK.
 

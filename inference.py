@@ -1,19 +1,27 @@
 import os
 import json
+from dotenv import load_dotenv  # <-- ADDED
 from openai import OpenAI
 from adaptive_cache.env import AdaptiveCacheEnv, Action
+
+# Load variables from .env file into the environment
+load_dotenv()  # <-- ADDED
 
 def run_baseline(task_level: str):
     print(f"\n--- Running Baseline for Task: {task_level.upper()} ---")
     
-    # 1. Initialize the official OpenAI client, but point it to Groq's free endpoint
-    api_key = os.environ.get("GROQ_API_KEY")
+    # 1. Initialize the official OpenAI client dynamically
+    # <-- CHANGED: Now pulls from generic LLM_ variables
+    api_key = os.environ.get("LLM_API_KEY")
+    base_url = os.environ.get("LLM_BASE_URL")
+    model_name = os.environ.get("LLM_MODEL_NAME", "gpt-4o-mini") 
+    
     if not api_key:
-        print("ERROR: GROQ_API_KEY environment variable not set.")
+        print("ERROR: LLM_API_KEY environment variable not set. Check your .env file.")
         return
 
     client = OpenAI(
-        base_url="https://api.groq.com/openai/v1",
+        base_url=base_url,
         api_key=api_key
     )
     
@@ -30,9 +38,10 @@ def run_baseline(task_level: str):
 
     while not done:
         try:
-            # 2. Call Groq's high-speed open source model
+            # 2. Call the dynamically configured model
+            # <-- CHANGED: Now uses the model_name variable
             response = client.chat.completions.create(
-                model="llama-3.1-8b-instant", # Groq's powerful model
+                model=model_name, 
                 response_format={ "type": "json_object" },
                 messages=[
                     {"role": "system", "content": system_prompt},
