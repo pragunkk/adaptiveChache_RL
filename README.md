@@ -97,9 +97,7 @@ uv sync
 
 ```bash
 #create .env file in root directory
-LLM_API_KEY="model api key"
-LLM_BASE_URL="model api url"
-LLM_MODEL_NAME="model name"
+HF_TOKEN="you api key"
 ```
 
 ### 2. Running the Inference Agent
