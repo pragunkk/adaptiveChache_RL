@@ -1,13 +1,14 @@
 import os
 import json
+from collections import deque
 from dotenv import load_dotenv
 from openai import OpenAI
 from adaptive_cache.env import AdaptiveCacheEnv, Action
 
-# Load variables from local .env file (for local testing)
+# Load variables from local .env file
 load_dotenv()
 
-# 1. STRICT COMPLIANCE: Match the pre-submission checklist exactly
+# STRICT COMPLIANCE: Match the pre-submission checklist exactly
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.1-8b-instant")
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -19,7 +20,6 @@ def run_baseline(task_level: str):
         print("ERROR: HF_TOKEN environment variable not set.", flush=True)
         return
 
-    # Pass the HF_TOKEN to the api_key parameter of the OpenAI client
     client = OpenAI(
         base_url=API_BASE_URL,
         api_key=HF_TOKEN
@@ -29,17 +29,34 @@ def run_baseline(task_level: str):
     obs = env.reset()
     done = False
     
+    # ---------------------------------------------------------
+    # PHASE 2 UPGRADE: Agentic Memory Trackers
+    # ---------------------------------------------------------
+    # We keep the last 15 steps of history. 
+    # If the sequence loop is 12 items long, 15 gives the LLM 
+    # enough vision to realize the pattern is repeating.
+    history_window = deque(maxlen=15)
+    
     system_prompt = """
-    You are an intelligent Cache Manager. 
+    You are an advanced OS Cache Manager with memory and pattern recognition.
     You must decide which cache slot index (0 to 9) to evict.
-    Respond ONLY with a JSON object matching this schema: {"evict_index": integer}
+    
+    STRATEGY GUIDE:
+    1. Analyze the "Recent History". Are requests looping? If yes, pin some items by refusing to evict them.
+    2. Has the working set shifted entirely? If yes, aggressively evict the oldest items.
+    3. Learn from your past actions: if evicting a slot led to a MISS later, protect that slot!
+    
+    You MUST respond with a JSON object matching this exact schema:
+    {
+        "reasoning": "A 1-sentence analysis of the history and your strategy",
+        "evict_index": integer
+    }
     """
 
-    # Trackers required for the grader's END log
     rewards_history = []
     step_count = 0
 
-    # 2. REQUIRED LOG FORMAT: START
+    # REQUIRED LOG FORMAT: START
     print(f"[START] task={task_level} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
     while not done:
@@ -47,36 +64,66 @@ def run_baseline(task_level: str):
         error_msg = "null"
         action_str = ""
         
+        # Format the memory for the LLM
+        history_str = "\n".join(history_window) if history_window else "No history yet. This is the first step."
+        
+        user_prompt = f"""
+        --- RECENT HISTORY (Oldest to Newest) ---
+        {history_str}
+        
+        --- CURRENT STATE ---
+        Current Cache State: {obs.cache_state}
+        Idle Times: {obs.idle_times}
+        Incoming Request (Needs to be cached): {obs.incoming_request}
+        """
+        
         try:
             response = client.chat.completions.create(
                 model=MODEL_NAME, 
                 response_format={ "type": "json_object" },
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Current State: {obs.model_dump_json()}"}
+                    {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.0
             )
             
             content = response.choices[0].message.content
             action_dict = json.loads(content)
-            action = Action(**action_dict)
+            
+            # CRITICAL: We extract ONLY the integer and drop the reasoning 
+            # so Pydantic doesn't throw a validation error.
+            # We also DO NOT print the reasoning, keeping the grader happy.
+            evict_idx = int(action_dict.get("evict_index", 0))
+            
+            action = Action(evict_index=evict_idx)
             action_str = str(action.evict_index)
             
         except Exception as e:
-            # Format error to be strictly on a single line for the grader
             error_msg = str(e).replace('\n', ' ')
             action_str = "0"
             action = Action(evict_index=0)
             
-        obs, reward, done, info = env.step(action)
+        # Step the environment
+        next_obs, reward, done, info = env.step(action)
+        
+        # ---------------------------------------------------------
+        # PHASE 2 UPGRADE: Log the outcome into memory
+        # ---------------------------------------------------------
+        # We record what was requested, what the agent did, and if it worked.
+        result_str = "HIT (+1.0)" if reward > 0 else "MISS (-1.0)"
+        memory_entry = f"Step {step_count} | Req: {obs.incoming_request} | Agent Evicted Slot: {action_str} | Result: {result_str}"
+        history_window.append(memory_entry)
+        
+        # Update observation for the next loop
+        obs = next_obs
         rewards_history.append(reward)
         
-        # 3. REQUIRED LOG FORMAT: STEP
+        # REQUIRED LOG FORMAT: STEP
         done_str = str(done).lower()
         print(f"[STEP] step={step_count} action={action_str} reward={reward:.2f} done={done_str} error={error_msg}", flush=True)
 
-    # 4. REQUIRED LOG FORMAT: END
+    # REQUIRED LOG FORMAT: END
     score = info.get('score', 0.0)
     success_str = str(score > 0.0).lower() 
     rewards_str = ",".join(f"{r:.2f}" for r in rewards_history)
