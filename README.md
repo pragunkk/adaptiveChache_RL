@@ -103,22 +103,43 @@ source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 uv sync
 ```
 
+**Environment Variables:**
+Create a file named exactly `.env` in the root directory. This is required for the LLM baseline script to run locally without hardcoding keys.
+
 ```bash
-#create .env file in root directory
-HF_TOKEN="you api key"
+# .env
+HF_TOKEN="your-api-key-here"
 ```
 
-### 2. Running the Inference Agent
-The inference.py script evaluates the environment using a zero-shot LLM baseline via the official OpenAI Python SDK.
+### 2. The Benchmark Suite
+This environment comes with a full suite of testing scripts so you can replicate the benchmarks and observe the agents in real-time.
 
-(Note: To ensure tests can be run repeatedly without cost during development, the script reads from the strict OPENAI_API_KEY variable as per OpenEnv specs, but the base URL can be pointed to Groq's free models).
+#### A. Traditional OS Baselines
+Test how standard deterministic algorithms perform against the three workloads. This script requires no API keys and runs instantly.
 
 ```bash
-# Export your API key
-export GROQ_API_KEY="your-api-key-here"
+# Runs Random, LRU, and LFU algorithms across Easy, Medium, and Hard tasks
+python classic_baselines.py
+```
 
-# Run the baseline evaluation across all 3 tasks
+#### B. LLM Inference Agent (The Grader Target)
+Test the generative AI agent. This script uses the strict `[START]`, `[STEP]`, and `[END]` STDOUT formatting required by the OpenEnv automated grader. It utilizes the Chain-of-Thought (CoT) and Agentic Memory architecture.
+
+```bash
+# Evaluates the LLM Agent across all 3 tasks (Requires HF_TOKEN in .env)
 python inference.py
+```
+
+#### C. Reinforcement Learning (PPO Agent)
+Train and evaluate a local Proximal Policy Optimization (PPO) neural network. This allows you to compare generative AI reasoning against pure mathematical machine learning.
+
+```bash
+# 1. Train the models from scratch
+python train_ppo.py
+
+# 2. Visually watch a trained agent play the game in your terminal with a diagnostic test
+python watch_ppo.py
+
 ```
 
 ### 3. Docker & Hugging Face Deployment
@@ -131,24 +152,34 @@ docker build -t adaptive-cache-env .
 # Run the container locally (boots the FastAPI server on port 7860)
 docker run -p 7860:7860 adaptive-cache-env
 ```
+---
 
 ## 📂 Project Structure
 
-```bash
+```text
 adaptive-cache-env/
-├── Dockerfile             # Container configuration pointing to server.app
-├── pyproject.toml         # Modern build system & OpenEnv core dependencies
-├── uv.lock                # Strict dependency lockfile
-├── openenv.yaml           # OpenEnv task and metadata specifications
-├── inference.py           # Baseline LLM inference script
-├── test_env.py            # Deterministic grader bounds validation
-├── README.md              # Project documentation
+├── 1Mtrained/             # Final 1-Million step PPO model weights
+├── 100Ktrained/           # Initial 100k step PPO model weights
+├── adaptive_cache/        
+│   ├── __init__.py
+│   ├── env.py             # OpenEnv wrapper and Pydantic models
+│   ├── simulator.py       # Core OS-level array and memory simulation
+│   └── workloads.py       # Deterministic task generators (Zipfian, Sequential, etc.)
 ├── server/
 │   └── app.py             # FastAPI web server and OpenEnv POST endpoints
-└── adaptive_cache/
-    ├── __init__.py
-    ├── simulator.py       # Core OS-level array and memory simulation
-    ├── workloads.py       # Deterministic task generators (Zipfian, Sequential, etc.)
-    └── env.py             # OpenEnv wrapper and Pydantic models
-
+├── .env                   # Local environment variables (Git-ignored)
+├── .gitignore             # Standard repository exclusions
+├── classic_baselines.py   # Script testing traditional OS algorithms (LRU, LFU)
+├── Dockerfile             # Container configuration pointing to server.app
+├── inference.py           # Compliant LLM agent inference script (Grader Target)
+├── journey.md             # Detailed engineering, architecture, and development log
+├── openenv.yaml           # OpenEnv task and metadata specifications
+├── pyproject.toml         # Modern build system & OpenEnv core dependencies
+├── README.md              # Project documentation
+├── requirements.txt       # Legacy dependency tracking
+├── rl_wrapper.py          # Gymnasium wrapper bridging OpenEnv to Stable-Baselines3
+├── test_env.py            # Deterministic grader bounds validation
+├── train_ppo.py           # Script to train the local RL neural networks
+├── uv.lock                # Strict dependency lockfile
+└── watch_ppo.py           # Script to visually evaluate trained RL agents
 ```
