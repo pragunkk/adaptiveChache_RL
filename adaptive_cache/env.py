@@ -5,6 +5,7 @@ from .workloads import generate_easy_task, generate_medium_task, generate_hard_t
 
 class Observation(BaseModel):
     incoming_request: int = Field(description="The ID of the data item being requested.")
+    incoming_cost: float = Field(description="The latency cost in ms to fetch this item if missed.")
     cache_state: List[int] = Field(description="Current items in the cache. -1 means empty.")
     idle_times: List[int] = Field(description="Time steps since each cache slot was last accessed.")
 
@@ -37,19 +38,21 @@ class AdaptiveCacheEnv:
         # Safe check for the terminal state to prevent IndexError
         if self.step_count >= len(self.workload):
             current_item = -1  # Simulation is over, no more incoming requests
+            current_cost = 0.0
         else:
-            current_item = self.workload[self.step_count]
+            current_item, current_cost = self.workload[self.step_count]
             
         idle_times = [(self.sim.current_time - t) if t > 0 else 0 for t in self.sim.last_access_time]
         return Observation(
             incoming_request=current_item,
+            incoming_cost=current_cost,
             cache_state=self.sim.cache.tolist(),
             idle_times=idle_times
         )
 
     def step(self, action: Action) -> Tuple[Observation, float, bool, Dict[str, Any]]:
         # 1. Apply Action (Evict and Insert)
-        current_item = self.workload[self.step_count]
+        current_item, current_cost = self.workload[self.step_count]
         self.sim.evict_and_insert(action.evict_index, current_item)
         
         # 2. Advance time strictly by 1 step
@@ -64,18 +67,20 @@ class AdaptiveCacheEnv:
             return self.state(), reward, True, {"score": final_score}
 
         # 4. Evaluate the *next* state strictly without fast-forwarding
-        next_item = self.workload[self.step_count]
+        next_item, next_cost = self.workload[self.step_count]
         is_hit = self.sim.request_item(next_item)
         
+        # --- THE HACKATHON FLEX: Latency-Based Reward Math ---
+        # Normalize the cost so rewards stay between -1.0 and +1.0
+        normalized_cost = next_cost / 100.0
+        
         if is_hit:
-            reward = 1.0 
+            reward = normalized_cost 
             self.hits += 1
-            # If it's a hit, the agent will see this in the next observation
-            # and can essentially choose a "safe" eviction slot that doesn't hurt.
         else:
-            reward = -1.0 
+            reward = -normalized_cost 
             
         current_score = self.hits / max(1, self.step_count)
-        info = {"score": current_score, "hits": self.hits, "steps": self.step_count}
+        info = {"score": current_score, "hits": self.hits, "steps": self.step_count, "latency_cost": next_cost}
         
         return self.state(), reward, done, info

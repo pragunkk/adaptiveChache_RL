@@ -29,12 +29,6 @@ def run_baseline(task_level: str):
     obs = env.reset()
     done = False
     
-    # ---------------------------------------------------------
-    # PHASE 2 UPGRADE: Agentic Memory Trackers
-    # ---------------------------------------------------------
-    # We keep the last 15 steps of history. 
-    # If the sequence loop is 12 items long, 15 gives the LLM 
-    # enough vision to realize the pattern is repeating.
     history_window = deque(maxlen=15)
     
     system_prompt = """
@@ -42,9 +36,12 @@ def run_baseline(task_level: str):
     You must decide which cache slot index (0 to 9) to evict.
     
     STRATEGY GUIDE:
-    1. Analyze the "Recent History". Are requests looping? If yes, pin some items by refusing to evict them.
+    1. Are requests looping? If yes, pin some items by refusing to evict them.
     2. Has the working set shifted entirely? If yes, aggressively evict the oldest items.
-    3. Learn from your past actions: if evicting a slot led to a MISS later, protect that slot!
+    3. THE ZIPFIAN RULE: Protect the most frequently requested items at all costs.
+    4. THE KNAPSACK RULE (Fetch Costs): You are optimizing for LATENCY. Protect high-cost items (e.g., 100ms), and evict low-cost items (10ms) when needed.
+    5. THE DEPRECIATION RULE (Crucial): A high-cost item is worthless if its "Idle Time" is massive. If a 100ms item hasn't been requested in a long time, the working set has shifted. Evict it immediately!
+    6. Learn from your past actions: if evicting a slot led to a MISS later, protect that slot!
     
     You MUST respond with a JSON object matching this exact schema:
     {
@@ -64,9 +61,9 @@ def run_baseline(task_level: str):
         error_msg = "null"
         action_str = ""
         
-        # Format the memory for the LLM
         history_str = "\n".join(history_window) if history_window else "No history yet. This is the first step."
         
+        # Inject the cost into the observation prompt!
         user_prompt = f"""
         --- RECENT HISTORY (Oldest to Newest) ---
         {history_str}
@@ -74,7 +71,7 @@ def run_baseline(task_level: str):
         --- CURRENT STATE ---
         Current Cache State: {obs.cache_state}
         Idle Times: {obs.idle_times}
-        Incoming Request (Needs to be cached): {obs.incoming_request}
+        Incoming Request (Needs to be cached): {obs.incoming_request} (FETCH COST: {obs.incoming_cost}ms)
         """
         
         try:
@@ -91,9 +88,6 @@ def run_baseline(task_level: str):
             content = response.choices[0].message.content
             action_dict = json.loads(content)
             
-            # CRITICAL: We extract ONLY the integer and drop the reasoning 
-            # so Pydantic doesn't throw a validation error.
-            # We also DO NOT print the reasoning, keeping the grader happy.
             evict_idx = int(action_dict.get("evict_index", 0))
             
             action = Action(evict_index=evict_idx)
@@ -104,26 +98,19 @@ def run_baseline(task_level: str):
             action_str = "0"
             action = Action(evict_index=0)
             
-        # Step the environment
         next_obs, reward, done, info = env.step(action)
         
-        # ---------------------------------------------------------
-        # PHASE 2 UPGRADE: Log the outcome into memory
-        # ---------------------------------------------------------
-        # We record what was requested, what the agent did, and if it worked.
-        result_str = "HIT (+1.0)" if reward > 0 else "MISS (-1.0)"
+        # Log exactly how much latency was saved or lost
+        result_str = f"HIT (+{reward:.2f})" if reward > 0 else f"MISS ({reward:.2f})"
         memory_entry = f"Step {step_count} | Req: {obs.incoming_request} | Agent Evicted Slot: {action_str} | Result: {result_str}"
         history_window.append(memory_entry)
         
-        # Update observation for the next loop
         obs = next_obs
         rewards_history.append(reward)
         
-        # REQUIRED LOG FORMAT: STEP
         done_str = str(done).lower()
         print(f"[STEP] step={step_count} action={action_str} reward={reward:.2f} done={done_str} error={error_msg}", flush=True)
 
-    # REQUIRED LOG FORMAT: END
     score = info.get('score', 0.0)
     success_str = str(score > 0.0).lower() 
     rewards_str = ",".join(f"{r:.2f}" for r in rewards_history)
